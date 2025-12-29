@@ -107,8 +107,7 @@ def login():
         if user and check_password_hash(user.password, password):
             session['user_id'] = user.id
             session['username'] = user.username
-            flash(f'Welcome back, {user.username}!', 'success')
-            return redirect(url_for('dashboard'))
+            return redirect(url_for('congrats'))
         else:
             flash('Invalid username or password!', 'error')
             return redirect(url_for('login'))
@@ -125,6 +124,18 @@ def dashboard():
     
     user = User.query.get(session['user_id'])
     return render_template('dashboard.html', user=user)
+
+
+@app.route('/congrats')
+def congrats():
+    """Congratulations page after successful login"""
+    if 'user_id' not in session:
+        flash('Please login first!', 'error')
+        return redirect(url_for('login'))
+    
+    user = User.query.get(session['user_id'])
+    current_time = datetime.now().strftime('%B %d, %Y at %I:%M %p')
+    return render_template('congrats.html', user=user, current_time=current_time)
 
 
 @app.route('/logout')
