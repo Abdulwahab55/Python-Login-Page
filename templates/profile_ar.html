@@ -71,16 +71,13 @@
         .profile-value {
             color: #555;
         }
-        .lang-switch {
-            margin-right: 20px;
-        }
     </style>
 </head>
 <body>
     <div class="navbar">
         <h1>نظام تسجيل الدخول بايثون</h1>
         <div class="navbar-links">
-            <span class="lang-switch"><a href="{{ url_for('profile') }}">English</a></span>
+            <a href="{{ url_for('profile') }}">English</a>
             <a href="{{ url_for('dashboard_ar') }}">لوحة التحكم</a>
             <a href="{{ url_for('logout_ar') }}">تسجيل الخروج</a>
         </div>

@@ -17,6 +17,24 @@
             display: flex;
             justify-content: center;
             align-items: center;
+            position: relative;
+        }
+        .language-switcher {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .language-switcher a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .language-switcher a:hover {
+            text-decoration: underline;
         }
         .container {
             background: white;
@@ -100,6 +118,9 @@
     </style>
 </head>
 <body>
+    <div class="language-switcher">
+        <a href="{{ url_for('congrats_ar') }}">العربية</a>
+    </div>
     <div class="container">
         <div class="success-icon">🎉</div>
         <h1>Congratulations!</h1>
@@ -114,9 +135,6 @@
         <div class="buttons">
             <a href="{{ url_for('index') }}" class="btn btn-primary">Go to Dashboard</a>
             <a href="{{ url_for('profile') }}" class="btn btn-secondary">View Profile</a>
-        </div>
-        <div style="margin-top: 20px;">
-            <a href="{{ url_for('congrats_ar') }}" style="color: #667eea; text-decoration: none;">العربية</a>
         </div>
     </div>
 </body>

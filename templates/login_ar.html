@@ -18,6 +18,24 @@
             justify-content: center;
             align-items: center;
             direction: rtl;
+            position: relative;
+        }
+        .language-switcher {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 5px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        .language-switcher a {
+            color: #667eea;
+            text-decoration: none;
+            font-weight: 500;
+        }
+        .language-switcher a:hover {
+            text-decoration: underline;
         }
         .container {
             background: white;
@@ -156,26 +174,10 @@
         .popup-button:hover {
             opacity: 0.9;
         }
-        .lang-switch {
-            position: absolute;
-            top: 20px;
-            left: 20px;
-        }
-        .lang-switch a {
-            background: white;
-            color: #667eea;
-            padding: 8px 15px;
-            border-radius: 5px;
-            text-decoration: none;
-            font-weight: 500;
-        }
-        .lang-switch a:hover {
-            background: #f0f0f0;
-        }
     </style>
 </head>
 <body>
-    <div class="lang-switch">
+    <div class="language-switcher">
         <a href="{{ url_for('login') }}">English</a>
     </div>
     
