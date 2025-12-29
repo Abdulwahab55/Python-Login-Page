@@ -275,6 +275,148 @@ def set_security_headers(response):
     return response
 
 
+# ==================== Arabic Language Routes ====================
+
+@app.route('/ar/register', methods=['GET', 'POST'])
+@limiter.limit("5 per minute")
+def register_ar():
+    """Arabic version - User registration"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        email = request.form.get('email', '').strip().lower()
+        password = request.form.get('password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        if not username or not email or not password:
+            flash('جميع الحقول مطلوبة!', 'error')
+            return redirect(url_for('register_ar'))
+        
+        if not validate_username(username):
+            flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
+            return redirect(url_for('register_ar'))
+        
+        if not validate_email(email):
+            flash('الرجاء إدخال عنوان بريد إلكتروني صحيح', 'error')
+            return redirect(url_for('register_ar'))
+        
+        if password != confirm_password:
+            flash('كلمات المرور غير متطابقة!', 'error')
+            return redirect(url_for('register_ar'))
+        
+        is_valid, message = validate_password(password)
+        if not is_valid:
+            flash('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على أحرف كبيرة وصغيرة وأرقام ورموز خاصة', 'error')
+            return redirect(url_for('register_ar'))
+        
+        existing_user = User.query.filter(
+            (User.username == username) | (User.email == email)
+        ).first()
+        
+        if existing_user:
+            flash('فشل التسجيل. الرجاء استخدام بيانات مختلفة.', 'error')
+            return redirect(url_for('register_ar'))
+        
+        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+        new_user = User(username=username, email=email, password=hashed_password)
+        
+        try:
+            db.session.add(new_user)
+            db.session.commit()
+            flash('تم التسجيل بنجاح! الرجاء تسجيل الدخول.', 'success')
+            return redirect(url_for('login_ar'))
+        except Exception as e:
+            db.session.rollback()
+            app.logger.error(f'Registration error: {str(e)}')
+            flash('فشل التسجيل. الرجاء المحاولة مرة أخرى.', 'error')
+            return redirect(url_for('register_ar'))
+    
+    return render_template('register_ar.html')
+
+
+@app.route('/ar/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
+def login_ar():
+    """Arabic version - User login"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if not username or not password:
+            flash('اسم المستخدم وكلمة المرور مطلوبان!', 'error')
+            return redirect(url_for('login_ar'))
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
+            session.clear()
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session.permanent = True
+            return redirect(url_for('congrats_ar'))
+        else:
+            flash('بيانات اعتماد غير صحيحة. الرجاء المحاولة مرة أخرى.', 'error')
+            return redirect(url_for('login_ar'))
+    
+    return render_template('login_ar.html')
+
+
+@app.route('/ar/dashboard')
+def dashboard_ar():
+    """Arabic version - User dashboard"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    return render_template('dashboard_ar.html', user=user)
+
+
+@app.route('/ar/congrats')
+def congrats_ar():
+    """Arabic version - Congratulations page"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    current_time = datetime.now().strftime('%d %B %Y في %I:%M %p')
+    return render_template('congrats_ar.html', user=user, current_time=current_time)
+
+
+@app.route('/ar/profile')
+def profile_ar():
+    """Arabic version - User profile"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    return render_template('profile_ar.html', user=user)
+
+
+@app.route('/ar/logout')
+def logout_ar():
+    """Arabic version - User logout"""
+    session.clear()
+    flash('تم تسجيل الخروج بنجاح!', 'success')
+    return redirect(url_for('login_ar'))
+
+
 if __name__ == '__main__':
     # Never run with debug=True in production
     debug_mode = os.getenv('FLASK_ENV', 'production') == 'development'

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dashboard - Python Login Page</title>
+    <title>لوحة التحكم - نظام تسجيل الدخول بايثون</title>
     <style>
         * {
             margin: 0;
@@ -11,10 +11,11 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', 'Arial', 'Tahoma', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
+            direction: rtl;
         }
         .navbar {
             background: white;
@@ -33,7 +34,7 @@
         .navbar-links a {
             color: #667eea;
             text-decoration: none;
-            margin-left: 20px;
+            margin-right: 20px;
             font-weight: 500;
         }
         .navbar-links a:hover {
@@ -70,34 +71,37 @@
             color: #666;
             line-height: 1.6;
         }
+        .lang-switch {
+            margin-right: 20px;
+        }
     </style>
 </head>
 <body>
     <div class="navbar">
-        <h1>Python Login System</h1>
+        <h1>نظام تسجيل الدخول بايثون</h1>
         <div class="navbar-links">
-            <a href="{{ url_for('profile') }}">Profile</a>
-            <a href="{{ url_for('dashboard_ar') }}">العربية</a>
-            <a href="{{ url_for('logout') }}">Logout</a>
+            <span class="lang-switch"><a href="{{ url_for('index') }}">English</a></span>
+            <a href="{{ url_for('profile_ar') }}">الملف الشخصي</a>
+            <a href="{{ url_for('logout_ar') }}">تسجيل الخروج</a>
         </div>
     </div>
     
     <div class="container">
-        <h2>Dashboard</h2>
-        <p class="welcome-message">Welcome, <strong>{{ user.username }}</strong>! 👋</p>
+        <h2>لوحة التحكم</h2>
+        <p class="welcome-message">مرحباً، <strong>{{ user.username }}</strong>! 👋</p>
         
         <div class="info-card">
-            <h3>Account Information</h3>
-            <p><strong>Username:</strong> {{ user.username }}</p>
-            <p><strong>Email:</strong> {{ user.email }}</p>
-            <p><strong>Member Since:</strong> {{ user.created_at.strftime('%B %d, %Y') }}</p>
+            <h3>معلومات الحساب</h3>
+            <p><strong>اسم المستخدم:</strong> {{ user.username }}</p>
+            <p><strong>البريد الإلكتروني:</strong> {{ user.email }}</p>
+            <p><strong>عضو منذ:</strong> {{ user.created_at.strftime('%d %B %Y') }}</p>
         </div>
         
         <div class="info-card">
-            <h3>Quick Stats</h3>
-            <p>✅ Account Active</p>
-            <p>🔒 Secure Password Authentication</p>
-            <p>📧 Email Verified</p>
+            <h3>إحصائيات سريعة</h3>
+            <p>✅ الحساب نشط</p>
+            <p>🔒 مصادقة آمنة لكلمة المرور</p>
+            <p>📧 البريد الإلكتروني موثق</p>
         </div>
     </div>
 </body>

@@ -1,9 +1,9 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="ar" dir="rtl">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Congratulations - Python Login Page</title>
+    <title>تهانينا - نظام تسجيل الدخول بايثون</title>
     <style>
         * {
             margin: 0;
@@ -11,12 +11,13 @@
             box-sizing: border-box;
         }
         body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Segoe UI', 'Arial', 'Tahoma', sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             display: flex;
             justify-content: center;
             align-items: center;
+            direction: rtl;
         }
         .container {
             background: white;
@@ -97,26 +98,40 @@
             background: #667eea;
             color: white;
         }
+        .lang-switch {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+        }
+        .lang-switch a {
+            background: white;
+            color: #667eea;
+            padding: 8px 15px;
+            border-radius: 5px;
+            text-decoration: none;
+            font-weight: 500;
+        }
     </style>
 </head>
 <body>
+    <div class="lang-switch">
+        <a href="{{ url_for('congrats') }}">English</a>
+    </div>
+    
     <div class="container">
         <div class="success-icon">🎉</div>
-        <h1>Congratulations!</h1>
-        <p class="message">You have successfully logged in to your account. Welcome back!</p>
+        <h1>تهانينا!</h1>
+        <p class="message">لقد قمت بتسجيل الدخول بنجاح إلى حسابك. مرحباً بك مرة أخرى!</p>
         
         <div class="user-info">
-            <p><strong>Username:</strong> {{ user.username }}</p>
-            <p><strong>Email:</strong> {{ user.email }}</p>
-            <p><strong>Login Time:</strong> {{ current_time }}</p>
+            <p><strong>اسم المستخدم:</strong> {{ user.username }}</p>
+            <p><strong>البريد الإلكتروني:</strong> {{ user.email }}</p>
+            <p><strong>وقت الدخول:</strong> {{ current_time }}</p>
         </div>
         
         <div class="buttons">
-            <a href="{{ url_for('index') }}" class="btn btn-primary">Go to Dashboard</a>
-            <a href="{{ url_for('profile') }}" class="btn btn-secondary">View Profile</a>
-        </div>
-        <div style="margin-top: 20px;">
-            <a href="{{ url_for('congrats_ar') }}" style="color: #667eea; text-decoration: none;">العربية</a>
+            <a href="{{ url_for('dashboard_ar') }}" class="btn btn-primary">انتقل إلى لوحة التحكم</a>
+            <a href="{{ url_for('profile_ar') }}" class="btn btn-secondary">عرض الملف الشخصي</a>
         </div>
     </div>
 </body>
