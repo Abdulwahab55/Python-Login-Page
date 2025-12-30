@@ -351,10 +351,13 @@ def profile():
     return render_template('profile.html', user=user)
 
 
-@app.route('/change-username', methods=['POST'])
+    return render_template('profile.html', user=user)
+
+
+@app.route('/change-password', methods=['POST'])
 @limiter.limit("5 per minute")
-def change_username():
-    """Change user's username"""
+def change_password():
+    """Change user's password"""
     if 'user_id' not in session:
         return redirect(url_for('login'))
     
@@ -363,44 +366,37 @@ def change_username():
         session.clear()
         return redirect(url_for('login'))
         
-    password = request.form.get('password', '')
-    new_username = request.form.get('new_username', '').strip()
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
     
-    # 1. Verify Password (Optional but recommended, user didn't strict ask but "Secure Login System" implies it)
-    # Let's verify password for security since it's an account modification
-    if not password or not check_password_hash(user.password, password):
-        flash('Incorrect password. Cannot change username.', 'error')
+    # 1. Verify Current Password
+    if not current_password or not check_password_hash(user.password, current_password):
+        flash('Incorrect current password.', 'error')
         return redirect(url_for('profile'))
         
-    # 2. Validate New Username
-    if not new_username:
-        flash('New username is required!', 'error')
+    # 2. Validate New Password
+    if not new_password:
+        flash('New password is required!', 'error')
         return redirect(url_for('profile'))
         
-    if new_username == user.username:
-        flash('New username must be different from current username.', 'warning')
+    if new_password != confirm_password:
+        flash('New passwords do not match!', 'error')
         return redirect(url_for('profile'))
         
-    if not validate_username(new_username):
-         flash('Username must be 3-20 characters long and contain only letters, numbers, and underscores', 'error')
-         return redirect(url_for('profile'))
-         
-    # 3. Check Uniqueness
-    existing = User.query.filter_by(username=new_username).first()
-    if existing:
-        flash('Username already taken. Please choose another.', 'error')
+    is_valid, message = validate_password(new_password)
+    if not is_valid:
+        flash(message, 'error')
         return redirect(url_for('profile'))
         
-    # 4. Update
-    old_name = user.username
-    user.username = new_username
+    # 3. Update Password
     try:
+        user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
         db.session.commit()
-        session['username'] = new_username # Update session
-        flash(f'Username changed successfully from {old_name} to {new_username}!', 'success')
+        flash('Password changed successfully!', 'success')
     except Exception as e:
         db.session.rollback()
-        app.logger.error(f'Error changing username: {e}')
+        app.logger.error(f'Error changing password: {e}')
         flash('An error occurred. Please try again.', 'error')
         
     return redirect(url_for('profile'))
@@ -922,10 +918,13 @@ def profile_ar():
     return render_template('profile_ar.html', user=user)
 
 
-@app.route('/ar/change-username', methods=['POST'])
+    return render_template('profile_ar.html', user=user)
+
+
+@app.route('/ar/change-password', methods=['POST'])
 @limiter.limit("5 per minute")
-def change_username_ar():
-    """Arabic version - Change username"""
+def change_password_ar():
+    """Arabic version - Change password"""
     if 'user_id' not in session:
         return redirect(url_for('login_ar'))
     
@@ -934,42 +933,40 @@ def change_username_ar():
         session.clear()
         return redirect(url_for('login_ar'))
         
-    password = request.form.get('password', '')
-    new_username = request.form.get('new_username', '').strip()
+    current_password = request.form.get('current_password', '')
+    new_password = request.form.get('new_password', '')
+    confirm_password = request.form.get('confirm_password', '')
     
-    # 1. Verify Password
-    if not password or not check_password_hash(user.password, password):
-        flash('كلمة المرور غير صحيحة. لا يمكن تغيير اسم المستخدم.', 'error')
+    # 1. Verify Current Password
+    if not current_password or not check_password_hash(user.password, current_password):
+        flash('كلمة المرور الحالية غير صحيحة.', 'error')
         return redirect(url_for('profile_ar'))
         
-    # 2. Validate
-    if not new_username:
-        flash('اسم المستخدم الجديد مطلوب!', 'error')
+    # 2. Validate New Password
+    if not new_password:
+        flash('كلمة المرور الجديدة مطلوبة!', 'error')
         return redirect(url_for('profile_ar'))
         
-    if new_username == user.username:
-        flash('يجب أن يكون اسم المستخدم الجديد مختلفاً عن الحالي.', 'warning')
+    if new_password != confirm_password:
+        flash('كلمات المرور غير متطابقة!', 'error')
         return redirect(url_for('profile_ar'))
         
-    if not validate_username(new_username):
-         flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
-         return redirect(url_for('profile_ar'))
-         
-    # 3. Check Uniqueness
-    existing = User.query.filter_by(username=new_username).first()
-    if existing:
-        flash('اسم المستخدم مستخدم بالفعل. الرجاء اختيار اسم آخر.', 'error')
+    is_valid, message = validate_password(new_password)
+    if not is_valid:
+        # Translate common strength messages if needed, or pass generic
+        # For now, simplistic translation mapping or just pass the english validator message 
+        # (Ideal: update validator to support lang, but let's just hardcode a generic AR message if validator fails for now to keep it localized)
+        flash('يجب أن تحتوي كلمة المرور على 8 أحرف، حرف كبير، حرف صغير، رقم، ورمز خاص.', 'error')
         return redirect(url_for('profile_ar'))
         
-    # 4. Update
+    # 3. Update Password
     try:
-        user.username = new_username
+        user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
         db.session.commit()
-        session['username'] = new_username
-        flash('تم تغيير اسم المستخدم بنجاح!', 'success')
+        flash('تم تغيير كلمة المرور بنجاح!', 'success')
     except Exception as e:
         db.session.rollback()
-        app.logger.error(f'Error changing username: {e}')
+        app.logger.error(f'Error changing password: {e}')
         flash('حدث خطأ. الرجاء المحاولة مرة أخرى.', 'error')
         
     return redirect(url_for('profile_ar'))

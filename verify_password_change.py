@@ -9,13 +9,13 @@ def get_csrf_token(response_text):
     match = re.search(r'name="csrf_token" value="([^"]+)"', response_text)
     return match.group(1) if match else None
 
-def verify_change_username():
-    username = f'u_{int(time.time())}'
+def verify_password_change():
+    username = f'u_pwd_{int(time.time())}'
     email = f'{username}@example.com'
-    password = 'StrongPass@123'
-    new_username = f'n_{username}'
+    old_password = 'OldStrongPass@123'
+    new_password = 'NewStrongPass@456'
     
-    print(f"\n=== Testing Change Username ({username} -> {new_username}) ===")
+    print(f"\n=== Testing Change Password ({username}) ===")
     
     session = requests.Session()
     
@@ -27,8 +27,8 @@ def verify_change_username():
     data = {
         'username': username,
         'email': email,
-        'password': password,
-        'confirm_password': password,
+        'password': old_password,
+        'confirm_password': old_password,
         'csrf_token': csrf
     }
     resp = session.post(f"{BASE_URL}/register", data=data)
@@ -48,62 +48,57 @@ def verify_change_username():
     # 2. Go to Profile
     print("2. Visiting Profile...")
     resp = session.get(f"{BASE_URL}/profile")
-    if username not in resp.text:
-         print("FAIL: Profile does not show current username")
+    if 'name="current_password"' not in resp.text:
+         print("FAIL: Profile does not show 'Change Password' form (field 'current_password' not found)")
+         # Debug print
+         print(f"DEBUG: Response snippet: {resp.text[:500]}")
          return False
     
-    # 3. Change Username (Success Case)
-    print(f"3. Changing username to {new_username}...")
+    # 3. Change Password
+    print(f"3. Changing password...")
     csrf = get_csrf_token(resp.text)
     data = {
-        'new_username': new_username,
-        'password': password,
+        'current_password': old_password,
+        'new_password': new_password,
+        'confirm_password': new_password,
         'csrf_token': csrf
     }
-    resp = session.post(f"{BASE_URL}/change-username", data=data)
+    resp = session.post(f"{BASE_URL}/change-password", data=data)
     
-    if new_username not in resp.text:
-        print(f"FAIL: Profile does not show NEW username.")
+    if "Password changed successfully" not in resp.text:
+        print(f"FAIL: Success message not found.")
         print(f"   -> Status Code: {resp.status_code}")
-        print(f"   -> Response Start: {resp.text[:500]}")
-        # Try to find flash messages
         flashes = re.findall(r'alert-\w+">([^<]+)<', resp.text)
         if flashes:
-            print(f"   -> Flash Messages Found: {flashes}")
-        else:
-            print("   -> No flash messages found.")
+            print(f"   -> Flashes: {flashes}")
         return False
-        
-    if "Username changed successfully" not in resp.text:
-         print("FAIL: Success message not found")
-         return False
          
-    print("   -> Username Change Successful")
+    print("   -> Password Change Requested")
     
-    # 4. Verify DB Update
-    with app.app_context():
-        u = User.query.filter_by(username=new_username).first()
-        if not u:
-            print("FAIL: User not found in DB with new username")
-            return False
-        old = User.query.filter_by(username=username).first()
-        if old:
-             print("FAIL: Old username still exists in DB (should be renamed)")
-             return False
-             
-    print("   -> DB Verified")
-    
-    # 5. Logout & Login with New Username
-    print("5. Relogging with new username...")
+    # 4. Logout
+    print("4. Logging out...")
     session.get(f"{BASE_URL}/logout")
     
+    # 5. Try Login with OLD Password (Should Fail)
+    print("5. Attempting login with OLD password (should fail)...")
     resp = session.get(f"{BASE_URL}/login")
     csrf = get_csrf_token(resp.text)
     data = {
-        'username': new_username,
-        'password': password,
+        'username': username,
+        'password': old_password,
         'csrf_token': csrf
     }
+    resp = session.post(f"{BASE_URL}/login", data=data)
+    
+    if "login_success" in resp.url or "dashboard" in resp.url or "Welcome" in resp.text:
+        print("FAIL: Logged in with OLD password!")
+        return False
+    else:
+        print("   -> Login with old password failed (as expected)")
+
+    # 6. Try Login with NEW Password (Should Success)
+    print("6. Attempting login with NEW password (should success)...")
+    data['password'] = new_password
     resp = session.post(f"{BASE_URL}/login", data=data)
     
     # 2FA Verify
@@ -111,15 +106,15 @@ def verify_change_username():
     resp = session.post(f"{BASE_URL}/verify-2fa", data={'token': token, 'csrf_token': csrf})
     
     if "congrats" in resp.url or "dashboard" in resp.url or "Welcome" in resp.text:
-         print("   -> Login Success")
+         print("   -> Login with NEW password SUCCESS")
     else:
-         print(f"FAIL: Could not login with new username. URL: {resp.url}")
+         print(f"FAIL: Could not login with new password. URL: {resp.url}")
          return False
 
     return True
 
 if __name__ == "__main__":
-    if verify_change_username():
+    if verify_password_change():
         print("\nTEST PASSED")
     else:
         print("\nTEST FAILED")

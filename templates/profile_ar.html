@@ -142,21 +142,24 @@
 
         <div class="profile-section" style="margin-top: 30px; border-top: 1px solid #eee; padding-top: 20px;">
             <h3 style="color: #333; margin-bottom: 20px;">👤 إعدادات الحساب</h3>
-            <form method="POST" action="{{ url_for('change_username_ar') }}">
+            <form method="POST" action="{{ url_for('change_password_ar') }}">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div style="margin-bottom: 15px;">
-                    <label style="display:block; margin-bottom:5px; color:#555; font-weight:600;">تغيير اسم
-                        المستخدم</label>
-                    <div style="display: flex; gap: 10px;">
-                        <input type="text" name="new_username" placeholder="اسم المستخدم الجديد" required
-                            style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; flex: 1;">
-                        <input type="password" name="password" placeholder="تأكيد كلمة المرور" required
-                            style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; flex: 1;">
+                    <label style="display:block; margin-bottom:5px; color:#555; font-weight:600;">تغيير كلمة
+                        المرور</label>
+                    <div style="display: flex; flex-direction: column; gap: 10px;">
+                        <input type="password" name="current_password" placeholder="كلمة المرور الحالية" required
+                            style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="password" name="new_password" placeholder="كلمة المرور الجديدة" required
+                            style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
+                        <input type="password" name="confirm_password" placeholder="تأكيد كلمة المرور الجديدة" required
+                            style="padding: 8px; border: 1px solid #ddd; border-radius: 5px;">
                         <button type="submit" class="btn"
-                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">تحديث</button>
+                            style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin-top: 5px;">تحديث
+                            كلمة المرور</button>
                     </div>
-                    <small style="color: #666; display: block; margin-top: 5px;">يجب أن يكون الاسم فريداً ومن 3-20
-                        حرفاً.</small>
+                    <small style="color: #666; display: block; margin-top: 5px;">يجب أن تكون كلمة المرور قوية (8 أحرف،
+                        حرف كبير، حرف صغير، رقم، رمز).</small>
                 </div>
             </form>
         </div>
