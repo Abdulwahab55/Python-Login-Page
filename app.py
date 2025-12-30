@@ -1,6 +1,7 @@
 """
 Python Login Page Application
 A secure Flask-based login and registration system with user authentication
+SECURITY FIX: User enumeration vulnerability patched
 """
 
 from flask import Flask, render_template, request, redirect, url_for, session, flash
@@ -17,6 +18,7 @@ import pyotp
 import qrcode
 import io
 import base64
+import time
 
 # Load environment variables
 load_dotenv()
@@ -165,71 +167,210 @@ def index():
 @app.route('/register', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def register():
-    """User registration with enhanced security"""
+    """
+    User registration with enhanced security
+    SECURITY FIX: Prevents user enumeration through timing attacks and generic responses
+    """
     if request.method == 'POST':
+        # Record start time for timing attack prevention
+        start_time = time.time()
+        
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         
+        # Track if registration will succeed (for timing normalization)
+        registration_will_succeed = False
+        error_message = None
+        
         # Validation
         if not username or not email or not password:
-            flash('All fields are required!', 'error')
-            return redirect(url_for('register'))
+            error_message = 'All fields are required!'
         
         # Validate username
-        if not validate_username(username):
-            flash('Username must be 3-20 characters long and contain only letters, numbers, and underscores', 'error')
-            return redirect(url_for('register'))
+        elif not validate_username(username):
+            error_message = 'Username must be 3-20 characters long and contain only letters, numbers, and underscores'
         
         # Validate email
-        if not validate_email(email):
-            flash('Please enter a valid email address', 'error')
-            return redirect(url_for('register'))
+        elif not validate_email(email):
+            error_message = 'Please enter a valid email address'
         
         # Validate password match
-        if password != confirm_password:
-            flash('Passwords do not match!', 'error')
-            return redirect(url_for('register'))
+        elif password != confirm_password:
+            error_message = 'Passwords do not match!'
         
         # Validate password strength
-        is_valid, message = validate_password(password)
-        if not is_valid:
-            flash(message, 'error')
-            return redirect(url_for('register'))
+        else:
+            is_valid, message = validate_password(password)
+            if not is_valid:
+                error_message = message
         
-        # Check if user already exists (prevent username enumeration with generic message)
-        existing_user = User.query.filter(
-            (User.username == username) | (User.email == email)
-        ).first()
-        
-        if existing_user:
-            flash('Registration failed. Please try different credentials.', 'error')
-            return redirect(url_for('register'))
-        
-        # Create new user with hashed password and 2FA enabled
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        two_factor_secret = pyotp.random_base32()
-        new_user = User(
-            username=username, 
-            email=email, 
-            password=hashed_password,
-            two_factor_secret=two_factor_secret,
-            two_factor_enabled=True
-        )
-        
-        try:
-            db.session.add(new_user)
-            db.session.commit()
+        # If validation passed, check for existing user and process
+        if not error_message:
+            # Check if user already exists
+            existing_user = User.query.filter(
+                (User.username == username) | (User.email == email)
+            ).first()
             
-            # Store user info in session for 2FA setup
-            session['setup_user_id'] = new_user.id
-            return redirect(url_for('first_time_2fa_setup'))
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f'Registration error: {str(e)}')
-            flash('Registration failed. Please try again.', 'error')
+            if existing_user:
+                # SECURITY FIX: Always hash the password even if user exists
+                # This prevents timing attacks that could reveal if username exists
+                _ = generate_password_hash(password, method='pbkdf2:sha256')
+                
+                # SECURITY FIX: Use generic message that doesn't reveal if user exists
+                error_message = 'Registration could not be completed. Please try different credentials or contact support if you believe this is an error.'
+            else:
+                # User doesn't exist, proceed with registration
+                registration_will_succeed = True
+                hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+                two_factor_secret = pyotp.random_base32()
+                new_user = User(
+                    username=username, 
+                    email=email, 
+                    password=hashed_password,
+                    two_factor_secret=two_factor_secret,
+                    two_factor_enabled=True
+                )
+                
+                try:
+                    db.session.add(new_user)
+                    db.session.commit()
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.error(f'Registration error: {str(e)}')
+                    error_message = 'فشل التسجيل. الرجاء المحاولة مرة أخرى.'
+                    registration_will_succeed = False
+        
+        # SECURITY FIX: Normalize response time
+        elapsed_time = time.time() - start_time
+        target_time = 0.3
+        if elapsed_time < target_time:
+            time.sleep(target_time - elapsed_time)
+        
+        if error_message:
+            flash(error_message, 'error')
+            return redirect(url_for('register_ar'))
+        
+        if registration_will_succeed:
+            flash('تم التسجيل بنجاح! الرجاء تسجيل الدخول.', 'success')
+            return redirect(url_for('login_ar'))
+    
+    return render_template('register_ar.html')
+
+
+@app.route('/ar/login', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
+def login_ar():
+    """Arabic version - User login"""
+    if request.method == 'POST':
+        username = request.form.get('username', '').strip()
+        password = request.form.get('password', '')
+        
+        if not username or not password:
+            flash('اسم المستخدم وكلمة المرور مطلوبان!', 'error')
+            return redirect(url_for('login_ar'))
+        
+        user = User.query.filter_by(username=username).first()
+        
+        if user and check_password_hash(user.password, password):
+            session.clear()
+            session['user_id'] = user.id
+            session['username'] = user.username
+            session.permanent = True
+            return redirect(url_for('congrats_ar'))
+        else:
+            flash('بيانات اعتماد غير صحيحة. الرجاء المحاولة مرة أخرى.', 'error')
+            return redirect(url_for('login_ar'))
+    
+    return render_template('login_ar.html')
+
+
+@app.route('/ar/dashboard')
+def dashboard_ar():
+    """Arabic version - User dashboard"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    return render_template('dashboard_ar.html', user=user)
+
+
+@app.route('/ar/congrats')
+def congrats_ar():
+    """Arabic version - Congratulations page"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    current_time = datetime.now().strftime('%d %B %Y في %I:%M %p')
+    return render_template('congrats_ar.html', user=user, current_time=current_time)
+
+
+@app.route('/ar/profile')
+def profile_ar():
+    """Arabic version - User profile"""
+    if 'user_id' not in session:
+        flash('الرجاء تسجيل الدخول أولاً!', 'error')
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
+        return redirect(url_for('login_ar'))
+    
+    return render_template('profile_ar.html', user=user)
+
+
+@app.route('/ar/logout')
+def logout_ar():
+    """Arabic version - User logout"""
+    session.clear()
+    flash('تم تسجيل الخروج بنجاح!', 'success')
+    return redirect(url_for('login_ar'))
+
+
+if __name__ == '__main__':
+    # Never run with debug=True in production
+    debug_mode = os.getenv('FLASK_ENV', 'production') == 'development'
+    app.run(debug=debug_mode, host='127.0.0.1', port=5000).add(new_user)
+                    db.session.commit()
+                    
+                    # Store user info in session for 2FA setup
+                    session['setup_user_id'] = new_user.id
+                except Exception as e:
+                    db.session.rollback()
+                    app.logger.error(f'Registration error: {str(e)}')
+                    error_message = 'Registration failed. Please try again.'
+                    registration_will_succeed = False
+        
+        # SECURITY FIX: Normalize response time to prevent timing attacks
+        # Target: 300ms minimum response time
+        elapsed_time = time.time() - start_time
+        target_time = 0.3  # 300ms
+        if elapsed_time < target_time:
+            time.sleep(target_time - elapsed_time)
+        
+        # Return appropriate response
+        if error_message:
+            flash(error_message, 'error')
             return redirect(url_for('register'))
+        
+        if registration_will_succeed:
+            return redirect(url_for('first_time_2fa_setup'))
     
     return render_template('register.html')
 
@@ -700,144 +841,52 @@ def admin_reset_2fa(user_id):
 @app.route('/ar/register', methods=['GET', 'POST'])
 @limiter.limit("5 per minute")
 def register_ar():
-    """Arabic version - User registration"""
+    """
+    Arabic version - User registration
+    SECURITY FIX: Prevents user enumeration through timing attacks and generic responses
+    """
     if request.method == 'POST':
+        # Record start time for timing attack prevention
+        start_time = time.time()
+        
         username = request.form.get('username', '').strip()
         email = request.form.get('email', '').strip().lower()
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         
+        registration_will_succeed = False
+        error_message = None
+        
         if not username or not email or not password:
-            flash('جميع الحقول مطلوبة!', 'error')
-            return redirect(url_for('register_ar'))
+            error_message = 'جميع الحقول مطلوبة!'
         
-        if not validate_username(username):
-            flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
-            return redirect(url_for('register_ar'))
+        elif not validate_username(username):
+            error_message = 'يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية'
         
-        if not validate_email(email):
-            flash('الرجاء إدخال عنوان بريد إلكتروني صحيح', 'error')
-            return redirect(url_for('register_ar'))
+        elif not validate_email(email):
+            error_message = 'الرجاء إدخال عنوان بريد إلكتروني صحيح'
         
-        if password != confirm_password:
-            flash('كلمات المرور غير متطابقة!', 'error')
-            return redirect(url_for('register_ar'))
+        elif password != confirm_password:
+            error_message = 'كلمات المرور غير متطابقة!'
         
-        is_valid, message = validate_password(password)
-        if not is_valid:
-            flash('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على أحرف كبيرة وصغيرة وأرقام ورموز خاصة', 'error')
-            return redirect(url_for('register_ar'))
-        
-        existing_user = User.query.filter(
-            (User.username == username) | (User.email == email)
-        ).first()
-        
-        if existing_user:
-            flash('فشل التسجيل. الرجاء استخدام بيانات مختلفة.', 'error')
-            return redirect(url_for('register_ar'))
-        
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        new_user = User(username=username, email=email, password=hashed_password)
-        
-        try:
-            db.session.add(new_user)
-            db.session.commit()
-            flash('تم التسجيل بنجاح! الرجاء تسجيل الدخول.', 'success')
-            return redirect(url_for('login_ar'))
-        except Exception as e:
-            db.session.rollback()
-            app.logger.error(f'Registration error: {str(e)}')
-            flash('فشل التسجيل. الرجاء المحاولة مرة أخرى.', 'error')
-            return redirect(url_for('register_ar'))
-    
-    return render_template('register_ar.html')
-
-
-@app.route('/ar/login', methods=['GET', 'POST'])
-@limiter.limit("10 per minute")
-def login_ar():
-    """Arabic version - User login"""
-    if request.method == 'POST':
-        username = request.form.get('username', '').strip()
-        password = request.form.get('password', '')
-        
-        if not username or not password:
-            flash('اسم المستخدم وكلمة المرور مطلوبان!', 'error')
-            return redirect(url_for('login_ar'))
-        
-        user = User.query.filter_by(username=username).first()
-        
-        if user and check_password_hash(user.password, password):
-            session.clear()
-            session['user_id'] = user.id
-            session['username'] = user.username
-            session.permanent = True
-            return redirect(url_for('congrats_ar'))
         else:
-            flash('بيانات اعتماد غير صحيحة. الرجاء المحاولة مرة أخرى.', 'error')
-            return redirect(url_for('login_ar'))
-    
-    return render_template('login_ar.html')
-
-
-@app.route('/ar/dashboard')
-def dashboard_ar():
-    """Arabic version - User dashboard"""
-    if 'user_id' not in session:
-        flash('الرجاء تسجيل الدخول أولاً!', 'error')
-        return redirect(url_for('login_ar'))
-    
-    user = db.session.get(User, session['user_id'])
-    if not user:
-        session.clear()
-        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
-        return redirect(url_for('login_ar'))
-    
-    return render_template('dashboard_ar.html', user=user)
-
-
-@app.route('/ar/congrats')
-def congrats_ar():
-    """Arabic version - Congratulations page"""
-    if 'user_id' not in session:
-        flash('الرجاء تسجيل الدخول أولاً!', 'error')
-        return redirect(url_for('login_ar'))
-    
-    user = db.session.get(User, session['user_id'])
-    if not user:
-        session.clear()
-        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
-        return redirect(url_for('login_ar'))
-    
-    current_time = datetime.now().strftime('%d %B %Y في %I:%M %p')
-    return render_template('congrats_ar.html', user=user, current_time=current_time)
-
-
-@app.route('/ar/profile')
-def profile_ar():
-    """Arabic version - User profile"""
-    if 'user_id' not in session:
-        flash('الرجاء تسجيل الدخول أولاً!', 'error')
-        return redirect(url_for('login_ar'))
-    
-    user = db.session.get(User, session['user_id'])
-    if not user:
-        session.clear()
-        flash('انتهت صلاحية الجلسة. الرجاء تسجيل الدخول مرة أخرى.', 'error')
-        return redirect(url_for('login_ar'))
-    
-    return render_template('profile_ar.html', user=user)
-
-
-@app.route('/ar/logout')
-def logout_ar():
-    """Arabic version - User logout"""
-    session.clear()
-    flash('تم تسجيل الخروج بنجاح!', 'success')
-    return redirect(url_for('login_ar'))
-
-
-if __name__ == '__main__':
-    # Never run with debug=True in production
-    debug_mode = os.getenv('FLASK_ENV', 'production') == 'development'
-    app.run(debug=debug_mode, host='127.0.0.1', port=5000)
+            is_valid, _ = validate_password(password)
+            if not is_valid:
+                error_message = 'كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على أحرف كبيرة وصغيرة وأرقام ورموز خاصة'
+        
+        if not error_message:
+            existing_user = User.query.filter(
+                (User.username == username) | (User.email == email)
+            ).first()
+            
+            if existing_user:
+                # SECURITY FIX: Always hash password even if user exists
+                _ = generate_password_hash(password, method='pbkdf2:sha256')
+                error_message = 'لا يمكن إتمام التسجيل. الرجاء استخدام بيانات مختلفة أو الاتصال بالدعم إذا كنت تعتقد أن هذا خطأ.'
+            else:
+                registration_will_succeed = True
+                hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+                new_user = User(username=username, email=email, password=hashed_password)
+                
+                try:
+                    db.session
