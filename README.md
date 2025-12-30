@@ -5,17 +5,18 @@ A simple and secure Flask-based login and registration system with user authenti
 ## Features
 
 - ✅ User Registration with Password Confirmation
-- ✅ User Login with Authentication
+- ✅ User Login with Authentication and 2FA
+- ✅ Multi-language Support (English & Arabic)
 - ✅ Secure Password Hashing (Werkzeug)
 - ✅ Session Management
 - ✅ User Dashboard
-- ✅ User Profile Page
+- ✅ User Profile Page with Password Change
 - ✅ Congratulations Page after Login
 - ✅ SQLite Database
 - ✅ Success Popup Notifications
 - ✅ Flash Messages for Errors
 - ✅ Modern Responsive UI with Gradient Design
-- ✅ Form Validation
+- ✅ Form Validation and Rate Limiting
 
 ## Installation
 
@@ -37,15 +38,25 @@ source .venv/bin/activate  # On macOS/Linux
 pip install -r requirements.txt
 ```
 
-4. Run the application:
+4. Set up environment variables:
+   - Create a `.env` file based on `.env.example`
+   - Set `SECRET_KEY` (required for sessions and security)
+   - Set `DATABASE_URI` (optional, defaults to SQLite)
+
+5. Run the application:
 ```bash
 python app.py
 ```
 
-5. Open your browser and navigate to:
+6. Open your browser and navigate to:
 ```
 http://localhost:5000
 ```
+
+7. **Admin Access**:
+   - Default Admin User: `admin`
+   - Default Password: `Admin@123`
+   - **Note**: Admin 2FA secret is generated on first run. Check logical console output or database if needed for development.
 
 ## Usage
 
@@ -64,10 +75,13 @@ http://localhost:5000
 
 - Password hashing using Werkzeug's `pbkdf2:sha256`
 - Session-based authentication
+- **Two-Factor Authentication (2FA)** using TOTP (Google Authenticator)
+- **Rate Limiting** on sensitive endpoints (Login, Register, Change Password)
 - Input validation and sanitization
-- Password confirmation on registration
-- Minimum password length requirement (6 characters)
+- Password confirmation on registration and change
+- Minimum password length requirement (8 characters, strong password policy)
 - SQL injection protection (SQLAlchemy ORM)
+- CSRF Protection
 - Unique username and email constraints
 - Secure session management with secret key
 
