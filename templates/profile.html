@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -10,12 +11,14 @@
             padding: 0;
             box-sizing: border-box;
         }
+
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             min-height: 100vh;
             padding: 20px;
         }
+
         .navbar {
             background: white;
             padding: 20px;
@@ -24,63 +27,76 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
+
         .navbar h1 {
             color: #333;
             font-size: 24px;
         }
+
         .navbar-links a {
             color: #667eea;
             text-decoration: none;
             margin-left: 20px;
             font-weight: 500;
         }
+
         .navbar-links a:hover {
             text-decoration: underline;
         }
+
         .container {
             background: white;
             padding: 40px;
             border-radius: 10px;
-            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.2);
             max-width: 800px;
             margin: 0 auto;
         }
+
         h2 {
             color: #333;
             margin-bottom: 30px;
         }
+
         .profile-section {
             margin-bottom: 30px;
         }
+
         .profile-item {
             display: flex;
             padding: 15px;
             border-bottom: 1px solid #eee;
         }
+
         .profile-item:last-child {
             border-bottom: none;
         }
+
         .profile-label {
             font-weight: 600;
             color: #667eea;
             width: 150px;
         }
+
         .profile-value {
             color: #555;
         }
+
         .security-section {
             margin-top: 30px;
             padding: 20px;
             background: #f8f9fa;
             border-radius: 5px;
         }
+
         .security-section h3 {
             color: #333;
             margin-bottom: 15px;
             font-size: 18px;
         }
+
         .security-item {
             display: flex;
             justify-content: space-between;
@@ -90,25 +106,30 @@
             border-radius: 5px;
             margin-bottom: 10px;
         }
+
         .security-label {
             display: flex;
             align-items: center;
             gap: 10px;
         }
+
         .status-badge {
             padding: 4px 12px;
             border-radius: 12px;
             font-size: 12px;
             font-weight: 600;
         }
+
         .status-enabled {
             background: #d4edda;
             color: #155724;
         }
+
         .status-disabled {
             background: #f8d7da;
             color: #721c24;
         }
+
         .btn {
             padding: 8px 16px;
             border: none;
@@ -118,20 +139,25 @@
             font-size: 14px;
             font-weight: 500;
         }
+
         .btn-primary {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
         }
+
         .btn-primary:hover {
             opacity: 0.9;
         }
+
         .btn-danger {
             background: #dc3545;
             color: white;
         }
+
         .btn-danger:hover {
             background: #c82333;
         }
+
         .modal {
             display: none;
             position: fixed;
@@ -144,9 +170,11 @@
             align-items: center;
             z-index: 1000;
         }
+
         .modal.show {
             display: flex;
         }
+
         .modal-content {
             background: white;
             padding: 30px;
@@ -154,10 +182,12 @@
             max-width: 400px;
             width: 90%;
         }
+
         .modal-content h3 {
             margin-bottom: 20px;
             color: #333;
         }
+
         .modal-content input {
             width: 100%;
             padding: 12px;
@@ -165,6 +195,7 @@
             border-radius: 5px;
             margin-bottom: 15px;
         }
+
         .modal-buttons {
             display: flex;
             gap: 10px;
@@ -172,6 +203,7 @@
         }
     </style>
 </head>
+
 <body>
     <div class="navbar">
         <h1>Python Login System</h1>
@@ -179,13 +211,31 @@
             {% if session.get('is_admin') %}
             <a href="{{ url_for('admin_dashboard') }}" style="color: #dc3545; font-weight: 600;">🛡️ Admin</a>
             {% endif %}
-            <a href="{{ url_for('index') }}">Dashboard</a>            <a href="{{ url_for('profile_ar') }}">العربية</a>            <a href="{{ url_for('logout') }}">Logout</a>
+            <a href="{{ url_for('index') }}">Dashboard</a> <a href="{{ url_for('profile_ar') }}">العربية</a> <a
+                href="{{ url_for('logout') }}">Logout</a>
         </div>
     </div>
-    
+
     <div class="container">
+        <!-- Flash Messages -->
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div style="margin-bottom: 20px;">
+            {% for category, message in messages %}
+            <div
+                style="padding: 10px; border-radius: 5px; margin-bottom: 10px; 
+                                    background-color: {% if category == 'success' %}#d4edda{% else %}#f8d7da{% endif %};
+                                    color: {% if category == 'success' %}#155724{% else %}#721c24{% endif %};
+                                    border: 1px solid {% if category == 'success' %}#c3e6cb{% else %}#f5c6cb{% endif %};">
+                {{ message }}
+            </div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
         <h2>User Profile</h2>
-        
+
         <div class="profile-section">
             <div class="profile-item">
                 <div class="profile-label">Username:</div>
@@ -204,29 +254,54 @@
                 <div class="profile-value">{{ user.created_at.strftime('%B %d, %Y at %I:%M %p') }}</div>
             </div>
         </div>
-        
+
+
+
+        <div class="security-section" style="margin-top: 30px;">
+            <h3>👤 Account Settings</h3>
+            <div class="security-item" style="display: block;">
+                <form method="POST" action="{{ url_for('change_username') }}">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                    <div style="margin-bottom: 15px;">
+                        <label style="display:block; margin-bottom:5px; color:#555; font-weight:600;">Change
+                            Username</label>
+                        <div style="display: flex; gap: 10px;">
+                            <input type="text" name="new_username" placeholder="New Username" required
+                                style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; flex: 1;">
+                            <input type="password" name="password" placeholder="Confirm Password" required
+                                style="padding: 8px; border: 1px solid #ddd; border-radius: 5px; flex: 1;">
+                            <button type="submit" class="btn btn-primary">Update</button>
+                        </div>
+                        <small style="color: #666; display: block; margin-top: 5px;">Username must be unique and 3-20
+                            characters long.</small>
+                    </div>
+                </form>
+            </div>
+        </div>
+
         <div class="security-section">
             <h3>🔐 Security Settings</h3>
             <div class="security-item">
                 <div class="security-label">
                     <span>Two-Factor Authentication</span>
                     {% if user.two_factor_enabled %}
-                        <span class="status-badge status-enabled">✓ Enabled</span>
+                    <span class="status-badge status-enabled">✓ Enabled</span>
                     {% else %}
-                        <span class="status-badge status-disabled">✗ Disabled</span>
+                    <span class="status-badge status-disabled">✗ Disabled</span>
                     {% endif %}
                 </div>
                 <div>
                     {% if user.two_factor_enabled %}
-                        <button class="btn btn-danger" onclick="showDisableModal()">Disable</button>
+                    <button class="btn btn-danger" onclick="showDisableModal()">Disable</button>
                     {% else %}
-                        <a href="{{ url_for('setup_2fa') }}" class="btn btn-primary">Enable</a>
+                    <a href="{{ url_for('setup_2fa') }}" class="btn btn-primary">Enable</a>
                     {% endif %}
                 </div>
             </div>
         </div>
     </div>
-    
+    </div>
+
     <!-- Disable 2FA Modal -->
     <div id="disableModal" class="modal">
         <div class="modal-content">
@@ -236,28 +311,30 @@
                 <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <input type="password" name="password" placeholder="Enter your password" required>
                 <div class="modal-buttons">
-                    <button type="button" class="btn" onclick="hideDisableModal()" style="background: #6c757d; color: white;">Cancel</button>
+                    <button type="button" class="btn" onclick="hideDisableModal()"
+                        style="background: #6c757d; color: white;">Cancel</button>
                     <button type="submit" class="btn btn-danger">Disable 2FA</button>
                 </div>
             </form>
         </div>
     </div>
-    
+
     <script>
         function showDisableModal() {
             document.getElementById('disableModal').classList.add('show');
         }
-        
+
         function hideDisableModal() {
             document.getElementById('disableModal').classList.remove('show');
         }
-        
+
         // Close modal when clicking outside
-        document.getElementById('disableModal').addEventListener('click', function(e) {
+        document.getElementById('disableModal').addEventListener('click', function (e) {
             if (e.target === this) {
                 hideDisableModal();
             }
         });
     </script>
 </body>
+
 </html>

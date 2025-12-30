@@ -351,6 +351,61 @@ def profile():
     return render_template('profile.html', user=user)
 
 
+@app.route('/change-username', methods=['POST'])
+@limiter.limit("5 per minute")
+def change_username():
+    """Change user's username"""
+    if 'user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+        
+    password = request.form.get('password', '')
+    new_username = request.form.get('new_username', '').strip()
+    
+    # 1. Verify Password (Optional but recommended, user didn't strict ask but "Secure Login System" implies it)
+    # Let's verify password for security since it's an account modification
+    if not password or not check_password_hash(user.password, password):
+        flash('Incorrect password. Cannot change username.', 'error')
+        return redirect(url_for('profile'))
+        
+    # 2. Validate New Username
+    if not new_username:
+        flash('New username is required!', 'error')
+        return redirect(url_for('profile'))
+        
+    if new_username == user.username:
+        flash('New username must be different from current username.', 'warning')
+        return redirect(url_for('profile'))
+        
+    if not validate_username(new_username):
+         flash('Username must be 3-20 characters long and contain only letters, numbers, and underscores', 'error')
+         return redirect(url_for('profile'))
+         
+    # 3. Check Uniqueness
+    existing = User.query.filter_by(username=new_username).first()
+    if existing:
+        flash('Username already taken. Please choose another.', 'error')
+        return redirect(url_for('profile'))
+        
+    # 4. Update
+    old_name = user.username
+    user.username = new_username
+    try:
+        db.session.commit()
+        session['username'] = new_username # Update session
+        flash(f'Username changed successfully from {old_name} to {new_username}!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error changing username: {e}')
+        flash('An error occurred. Please try again.', 'error')
+        
+    return redirect(url_for('profile'))
+
+
 # ==================== Two-Factor Authentication Routes ====================
 
 @app.route('/first-time-2fa-setup')
@@ -865,6 +920,59 @@ def profile_ar():
         return redirect(url_for('login_ar'))
     
     return render_template('profile_ar.html', user=user)
+
+
+@app.route('/ar/change-username', methods=['POST'])
+@limiter.limit("5 per minute")
+def change_username_ar():
+    """Arabic version - Change username"""
+    if 'user_id' not in session:
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login_ar'))
+        
+    password = request.form.get('password', '')
+    new_username = request.form.get('new_username', '').strip()
+    
+    # 1. Verify Password
+    if not password or not check_password_hash(user.password, password):
+        flash('كلمة المرور غير صحيحة. لا يمكن تغيير اسم المستخدم.', 'error')
+        return redirect(url_for('profile_ar'))
+        
+    # 2. Validate
+    if not new_username:
+        flash('اسم المستخدم الجديد مطلوب!', 'error')
+        return redirect(url_for('profile_ar'))
+        
+    if new_username == user.username:
+        flash('يجب أن يكون اسم المستخدم الجديد مختلفاً عن الحالي.', 'warning')
+        return redirect(url_for('profile_ar'))
+        
+    if not validate_username(new_username):
+         flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
+         return redirect(url_for('profile_ar'))
+         
+    # 3. Check Uniqueness
+    existing = User.query.filter_by(username=new_username).first()
+    if existing:
+        flash('اسم المستخدم مستخدم بالفعل. الرجاء اختيار اسم آخر.', 'error')
+        return redirect(url_for('profile_ar'))
+        
+    # 4. Update
+    try:
+        user.username = new_username
+        db.session.commit()
+        session['username'] = new_username
+        flash('تم تغيير اسم المستخدم بنجاح!', 'success')
+    except Exception as e:
+        db.session.rollback()
+        app.logger.error(f'Error changing username: {e}')
+        flash('حدث خطأ. الرجاء المحاولة مرة أخرى.', 'error')
+        
+    return redirect(url_for('profile_ar'))
 
 
 @app.route('/ar/logout')
