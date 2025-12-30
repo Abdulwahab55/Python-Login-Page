@@ -76,6 +76,9 @@
     <div class="navbar">
         <h1>Python Login System</h1>
         <div class="navbar-links">
+            {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color: #dc3545; font-weight: 600;">🛡️ Admin</a>
+            {% endif %}
             <a href="{{ url_for('profile') }}">Profile</a>
             <a href="{{ url_for('dashboard_ar') }}">العربية</a>
             <a href="{{ url_for('logout') }}">Logout</a>

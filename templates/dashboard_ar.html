@@ -77,6 +77,9 @@
     <div class="navbar">
         <h1>نظام تسجيل الدخول بايثون</h1>
         <div class="navbar-links">
+            {% if session.get('is_admin') %}
+            <a href="{{ url_for('admin_dashboard') }}" style="color: #dc3545; font-weight: 600;">🛡️ لوحة التحكم</a>
+            {% endif %}
             <a href="{{ url_for('dashboard') }}">English</a>
             <a href="{{ url_for('profile_ar') }}">الملف الشخصي</a>
             <a href="{{ url_for('logout_ar') }}">تسجيل الخروج</a>

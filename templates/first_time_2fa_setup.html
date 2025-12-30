@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Setup Two-Factor Authentication - Python Login Page</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+            max-width: 600px;
+            width: 100%;
+        }
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .header-icon {
+            font-size: 60px;
+            margin-bottom: 15px;
+        }
+        h2 {
+            color: #333;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            color: #666;
+            font-size: 14px;
+        }
+        .warning-box {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            color: #856404;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 25px;
+        }
+        .warning-box strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+        .setup-steps {
+            margin-bottom: 30px;
+        }
+        .step {
+            margin-bottom: 25px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 5px;
+            border-left: 4px solid #667eea;
+        }
+        .step-number {
+            font-size: 18px;
+            font-weight: bold;
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        .step-content {
+            color: #555;
+            line-height: 1.6;
+        }
+        .step-content ul {
+            margin: 10px 0 10px 20px;
+        }
+        .step-content li {
+            margin: 5px 0;
+        }
+        .qr-code-container {
+            text-align: center;
+            margin: 20px 0;
+            padding: 20px;
+            background: white;
+            border-radius: 5px;
+        }
+        .qr-code-container img {
+            max-width: 250px;
+            border: 2px solid #ddd;
+            border-radius: 5px;
+        }
+        .secret-key {
+            background: #f0f0f0;
+            padding: 15px;
+            border-radius: 5px;
+            text-align: center;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            word-break: break-all;
+            color: #333;
+            font-weight: 600;
+        }
+        .form-group {
+            margin-bottom: 20px;
+        }
+        label {
+            display: block;
+            margin-bottom: 5px;
+            color: #555;
+            font-weight: 500;
+        }
+        input {
+            width: 100%;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-size: 18px;
+            text-align: center;
+            letter-spacing: 5px;
+            font-weight: 600;
+        }
+        input:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        button {
+            width: 100%;
+            padding: 14px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 5px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 10px;
+            font-weight: 600;
+        }
+        button:hover {
+            opacity: 0.9;
+        }
+        .flash-messages {
+            margin-bottom: 20px;
+        }
+        .alert {
+            padding: 12px;
+            border-radius: 5px;
+            margin-bottom: 10px;
+        }
+        .alert-error {
+            background-color: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+        }
+        .help-text {
+            text-align: center;
+            color: #666;
+            font-size: 13px;
+            margin-top: 15px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="header-icon">🔐</div>
+            <h2>Complete Your Registration</h2>
+            <p class="subtitle">Set up Two-Factor Authentication for extra security</p>
+        </div>
+        
+        <div class="warning-box">
+            <strong>⚠️ Important:</strong>
+            Two-Factor Authentication (2FA) is required for all accounts. Save your secret key in a safe place in case you need to recover access!
+        </div>
+        
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                <div class="flash-messages">
+                    {% for category, message in messages %}
+                        <div class="alert alert-{{ category }}">{{ message }}</div>
+                    {% endfor %}
+                </div>
+            {% endif %}
+        {% endwith %}
+        
+        <div class="setup-steps">
+            <div class="step">
+                <div class="step-number">Step 1: Install Authenticator App</div>
+                <div class="step-content">
+                    Download one of these apps on your mobile device:
+                    <ul>
+                        <li><strong>Google Authenticator</strong> (iOS/Android)</li>
+                        <li><strong>Microsoft Authenticator</strong> (iOS/Android)</li>
+                        <li><strong>Authy</strong> (iOS/Android/Desktop)</li>
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">Step 2: Scan QR Code</div>
+                <div class="step-content">
+                    Open your authenticator app and scan this QR code:
+                    <div class="qr-code-container">
+                        <img src="data:image/png;base64,{{ qr_code }}" alt="QR Code for 2FA">
+                    </div>
+                    <strong>Can't scan? Manually enter this key:</strong>
+                    <div class="secret-key">{{ secret }}</div>
+                </div>
+            </div>
+            
+            <div class="step">
+                <div class="step-number">Step 3: Enter Verification Code</div>
+                <div class="step-content">
+                    Enter the 6-digit code from your authenticator app:
+                    <form method="POST" action="{{ url_for('complete_2fa_setup') }}" style="margin-top: 15px;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <div class="form-group">
+                            <label for="token">6-Digit Code</label>
+                            <input type="text" id="token" name="token" maxlength="6" pattern="\d{6}" 
+                                   placeholder="000000" required autofocus inputmode="numeric">
+                        </div>
+                        <button type="submit">Complete Setup & Login</button>
+                    </form>
+                    <p class="help-text">
+                        The code changes every 30 seconds. If it doesn't work, wait for a new code.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

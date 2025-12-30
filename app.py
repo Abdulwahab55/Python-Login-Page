@@ -13,6 +13,10 @@ from datetime import datetime, timedelta
 from dotenv import load_dotenv
 import os
 import re
+import pyotp
+import qrcode
+import io
+import base64
 
 # Load environment variables
 load_dotenv()
@@ -52,13 +56,57 @@ class User(db.Model):
     password = db.Column(db.String(200), nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     
+    # Two-Factor Authentication fields
+    two_factor_enabled = db.Column(db.Boolean, default=False)
+    two_factor_secret = db.Column(db.String(32), nullable=True)
+    
+    # Admin fields
+    is_admin = db.Column(db.Boolean, default=False)
+    must_change_password = db.Column(db.Boolean, default=False)
+    is_active = db.Column(db.Boolean, default=True)
+    
     def __repr__(self):
         return f'<User {self.username}>'
 
 
-# Create database tables
+# Create database tables and default admin user
 with app.app_context():
     db.create_all()
+    
+    # Create default admin user if it doesn't exist
+    admin = User.query.filter_by(username='admin').first()
+    if not admin:
+        default_password = 'Admin@123'
+        hashed_password = generate_password_hash(default_password, method='pbkdf2:sha256')
+        admin_secret = pyotp.random_base32()
+        
+        admin = User(
+            username='admin',
+            email='admin@pythonlogin.com',
+            password=hashed_password,
+            is_admin=True,
+            must_change_password=True,
+            two_factor_enabled=True,  # Admin requires 2FA
+            two_factor_secret=admin_secret
+        )
+        
+        db.session.add(admin)
+        db.session.commit()
+        
+        # Print admin credentials and 2FA secret
+        totp = pyotp.TOTP(admin_secret)
+        print('='*60)
+        print('Default admin user created:')
+        print('Username: admin')
+        print('Password: Admin@123')
+        print(f'2FA Secret: {admin_secret}')
+        print(f'Current 2FA Token: {totp.now()}')
+        print('='*60)
+        print('⚠️  IMPORTANT:')
+        print('1. Change password on first login')
+        print('2. Add the 2FA secret to your authenticator app')
+        print('3. Use the token from your app to login')
+        print('='*60)
 
 
 # Input Validation Functions
@@ -159,15 +207,24 @@ def register():
             flash('Registration failed. Please try different credentials.', 'error')
             return redirect(url_for('register'))
         
-        # Create new user with hashed password
+        # Create new user with hashed password and 2FA enabled
         hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        new_user = User(username=username, email=email, password=hashed_password)
+        two_factor_secret = pyotp.random_base32()
+        new_user = User(
+            username=username, 
+            email=email, 
+            password=hashed_password,
+            two_factor_secret=two_factor_secret,
+            two_factor_enabled=True
+        )
         
         try:
             db.session.add(new_user)
             db.session.commit()
-            flash('Registration successful! Please login.', 'success')
-            return redirect(url_for('login'))
+            
+            # Store user info in session for 2FA setup
+            session['setup_user_id'] = new_user.id
+            return redirect(url_for('first_time_2fa_setup'))
         except Exception as e:
             db.session.rollback()
             app.logger.error(f'Registration error: {str(e)}')
@@ -192,11 +249,33 @@ def login():
         user = User.query.filter_by(username=username).first()
         
         if user and check_password_hash(user.password, password):
+            # Check if account is active
+            if not user.is_active:
+                flash('Your account has been deactivated. Please contact administrator.', 'error')
+                return redirect(url_for('login'))
+            
+            # Check if password must be changed
+            if user.must_change_password:
+                session['change_password_user_id'] = user.id
+                return redirect(url_for('force_change_password'))
+            
+            # Check if 2FA is enabled
+            if user.two_factor_enabled:
+                # Store user_id temporarily for 2FA verification
+                session['temp_user_id'] = user.id
+                return redirect(url_for('verify_2fa'))
+            
             # Regenerate session to prevent session fixation
             session.clear()
             session['user_id'] = user.id
             session['username'] = user.username
+            session['is_admin'] = user.is_admin
             session.permanent = True
+            
+            # Redirect admin to admin dashboard
+            if user.is_admin:
+                return redirect(url_for('admin_dashboard'))
+            
             return redirect(url_for('congrats'))
         else:
             # Generic error message to prevent username enumeration
@@ -263,6 +342,206 @@ def profile():
     return render_template('profile.html', user=user)
 
 
+# ==================== Two-Factor Authentication Routes ====================
+
+@app.route('/first-time-2fa-setup')
+def first_time_2fa_setup():
+    """First-time 2FA setup after registration"""
+    if 'setup_user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['setup_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+    
+    # Generate QR code
+    totp = pyotp.TOTP(user.two_factor_secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email,
+        issuer_name='Python Login Page'
+    )
+    
+    # Create QR code image
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Convert to base64
+    buffer = io.BytesIO()
+    img.save(buffer)
+    buffer.seek(0)
+    qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return render_template('first_time_2fa_setup.html', 
+                          qr_code=qr_code_base64,
+                          secret=user.two_factor_secret)
+
+
+@app.route('/complete-2fa-setup', methods=['POST'])
+@limiter.limit("5 per minute")
+def complete_2fa_setup():
+    """Complete first-time 2FA setup and login"""
+    if 'setup_user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['setup_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+    
+    token = request.form.get('token', '').strip()
+    
+    # Verify the token
+    totp = pyotp.TOTP(user.two_factor_secret)
+    if totp.verify(token, valid_window=1):
+        # Token is valid, complete registration and login
+        setup_id = session.pop('setup_user_id')
+        session.clear()
+        session['user_id'] = setup_id
+        session['username'] = user.username
+        session.permanent = True
+        flash('Registration and 2FA setup successful!', 'success')
+        return redirect(url_for('congrats'))
+    else:
+        flash('Invalid token. Please try again.', 'error')
+        return redirect(url_for('first_time_2fa_setup'))
+
+
+@app.route('/verify-2fa', methods=['GET', 'POST'])
+@limiter.limit("10 per minute")
+def verify_2fa():
+    """Verify 2FA token during login"""
+    if 'temp_user_id' not in session:
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        token = request.form.get('token', '').strip()
+        
+        user = db.session.get(User, session['temp_user_id'])
+        if not user:
+            session.clear()
+            flash('Invalid session. Please login again.', 'error')
+            return redirect(url_for('login'))
+        
+        # Verify the token
+        totp = pyotp.TOTP(user.two_factor_secret)
+        if totp.verify(token, valid_window=1):
+            # Token is valid, complete login
+            temp_id = session.pop('temp_user_id')
+            session.clear()
+            session['user_id'] = temp_id
+            session['username'] = user.username
+            session['is_admin'] = user.is_admin
+            session.permanent = True
+            flash('2FA verification successful!', 'success')
+            return redirect(url_for('congrats'))
+        else:
+            flash('Invalid 2FA token. Please try again.', 'error')
+            return redirect(url_for('verify_2fa'))
+    
+    return render_template('verify_2fa.html')
+
+
+@app.route('/setup-2fa')
+def setup_2fa():
+    """Setup Two-Factor Authentication"""
+    if 'user_id' not in session:
+        flash('Please login first!', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('Session expired. Please login again.', 'error')
+        return redirect(url_for('login'))
+    
+    # Generate a new secret if not already present
+    if not user.two_factor_secret:
+        user.two_factor_secret = pyotp.random_base32()
+        db.session.commit()
+    
+    # Generate QR code
+    totp = pyotp.TOTP(user.two_factor_secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email,
+        issuer_name='Python Login Page'
+    )
+    
+    # Create QR code image
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    # Convert to base64 for embedding in HTML
+    buffer = io.BytesIO()
+    img.save(buffer)
+    buffer.seek(0)
+    qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return render_template('setup_2fa.html', 
+                          qr_code=qr_code_base64,
+                          secret=user.two_factor_secret)
+
+
+@app.route('/enable-2fa', methods=['POST'])
+@limiter.limit("5 per minute")
+def enable_2fa():
+    """Enable 2FA after verification"""
+    if 'user_id' not in session:
+        flash('Please login first!', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('Session expired. Please login again.', 'error')
+        return redirect(url_for('login'))
+    
+    token = request.form.get('token', '').strip()
+    
+    # Verify the token
+    totp = pyotp.TOTP(user.two_factor_secret)
+    if totp.verify(token, valid_window=1):
+        user.two_factor_enabled = True
+        db.session.commit()
+        flash('Two-Factor Authentication enabled successfully!', 'success')
+        return redirect(url_for('profile'))
+    else:
+        flash('Invalid token. Please try again.', 'error')
+        return redirect(url_for('setup_2fa'))
+
+
+@app.route('/disable-2fa', methods=['POST'])
+@limiter.limit("5 per minute")
+def disable_2fa():
+    """Disable Two-Factor Authentication"""
+    if 'user_id' not in session:
+        flash('Please login first!', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['user_id'])
+    if not user:
+        session.clear()
+        flash('Session expired. Please login again.', 'error')
+        return redirect(url_for('login'))
+    
+    password = request.form.get('password', '')
+    
+    # Verify password before disabling 2FA
+    if check_password_hash(user.password, password):
+        user.two_factor_enabled = False
+        user.two_factor_secret = None
+        db.session.commit()
+        flash('Two-Factor Authentication disabled successfully!', 'success')
+    else:
+        flash('Invalid password. Cannot disable 2FA.', 'error')
+    
+    return redirect(url_for('profile'))
+
+
 # Security Headers
 @app.after_request
 def set_security_headers(response):
@@ -273,6 +552,147 @@ def set_security_headers(response):
     response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     return response
+
+
+# ==================== Admin Routes ====================
+
+@app.route('/force-change-password', methods=['GET', 'POST'])
+def force_change_password():
+    """Force password change on first login"""
+    if 'change_password_user_id' not in session:
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, session['change_password_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login'))
+    
+    if request.method == 'POST':
+        current_password = request.form.get('current_password', '')
+        new_password = request.form.get('new_password', '')
+        confirm_password = request.form.get('confirm_password', '')
+        
+        # Verify current password
+        if not check_password_hash(user.password, current_password):
+            flash('Current password is incorrect!', 'error')
+            return redirect(url_for('force_change_password'))
+        
+        # Validate new password
+        if new_password != confirm_password:
+            flash('New passwords do not match!', 'error')
+            return redirect(url_for('force_change_password'))
+        
+        is_valid, message = validate_password(new_password)
+        if not is_valid:
+            flash(message, 'error')
+            return redirect(url_for('force_change_password'))
+        
+        # Update password
+        user.password = generate_password_hash(new_password, method='pbkdf2:sha256')
+        user.must_change_password = False
+        db.session.commit()
+        
+        # Complete login
+        user_id = session.pop('change_password_user_id')
+        session.clear()
+        session['user_id'] = user_id
+        session['username'] = user.username
+        session['is_admin'] = user.is_admin
+        session.permanent = True
+        
+        flash('Password changed successfully!', 'success')
+        if user.is_admin:
+            return redirect(url_for('admin_dashboard'))
+        return redirect(url_for('congrats'))
+    
+    return render_template('force_change_password.html', user=user)
+
+
+@app.route('/admin')
+def admin_dashboard():
+    """Admin dashboard"""
+    if 'user_id' not in session or not session.get('is_admin'):
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('login'))
+    
+    users = User.query.order_by(User.created_at.desc()).all()
+    total_users = User.query.count()
+    active_users = User.query.filter_by(is_active=True).count()
+    admin_users = User.query.filter_by(is_admin=True).count()
+    
+    return render_template('admin_dashboard.html', 
+                          users=users,
+                          total_users=total_users,
+                          active_users=active_users,
+                          admin_users=admin_users)
+
+
+@app.route('/admin/user/<int:user_id>/toggle-status', methods=['POST'])
+def admin_toggle_user_status(user_id):
+    """Toggle user active status"""
+    if 'user_id' not in session or not session.get('is_admin'):
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        flash('User not found!', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    if user.is_admin and user.id != session['user_id']:
+        flash('Cannot deactivate other admin accounts!', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    user.is_active = not user.is_active
+    db.session.commit()
+    
+    status = 'activated' if user.is_active else 'deactivated'
+    flash(f'User {user.username} has been {status}!', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/<int:user_id>/delete', methods=['POST'])
+def admin_delete_user(user_id):
+    """Delete user"""
+    if 'user_id' not in session or not session.get('is_admin'):
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        flash('User not found!', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    if user.is_admin:
+        flash('Cannot delete admin accounts!', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    username = user.username
+    db.session.delete(user)
+    db.session.commit()
+    
+    flash(f'User {username} has been deleted!', 'success')
+    return redirect(url_for('admin_dashboard'))
+
+
+@app.route('/admin/user/<int:user_id>/reset-2fa', methods=['POST'])
+def admin_reset_2fa(user_id):
+    """Reset user's 2FA"""
+    if 'user_id' not in session or not session.get('is_admin'):
+        flash('Access denied. Admin privileges required.', 'error')
+        return redirect(url_for('login'))
+    
+    user = db.session.get(User, user_id)
+    if not user:
+        flash('User not found!', 'error')
+        return redirect(url_for('admin_dashboard'))
+    
+    user.two_factor_enabled = False
+    user.two_factor_secret = None
+    db.session.commit()
+    
+    flash(f'2FA has been reset for user {user.username}!', 'success')
+    return redirect(url_for('admin_dashboard'))
 
 
 # ==================== Arabic Language Routes ====================
