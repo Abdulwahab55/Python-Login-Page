@@ -3,7 +3,7 @@ Python Login Page Application
 A secure Flask-based login and registration system with user authentication
 """
 
-from flask import Flask, render_template, request, redirect, url_for, session, flash
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from flask_wtf.csrf import CSRFProtect
 from flask_limiter import Limiter
@@ -75,9 +75,7 @@ class User(db.Model):
 
 
 # Create database tables and default admin user
-with app.app_context():
-    db.create_all()
-    
+def create_admin_user():
     # Create default admin user if it doesn't exist
     admin = User.query.filter_by(username='admin').first()
     if not admin:
