@@ -760,8 +760,10 @@ def register_ar():
             )
             db.session.add(new_user)
             db.session.commit()
-            flash('تم التسجيل بنجاح! الرجاء تسجيل الدخول.', 'success')
-            return redirect(url_for('login_ar'))
+            
+            # Store user info for 2FA setup
+            session['setup_user_id'] = new_user.id
+            return redirect(url_for('first_time_2fa_setup_ar'))
         except Exception as e:
             db.session.rollback()
             app.logger.error(f'Registration error: {str(e)}')
@@ -871,6 +873,70 @@ def logout_ar():
     session.clear()
     flash('تم تسجيل الخروج بنجاح!', 'success')
     return redirect(url_for('login_ar'))
+
+
+@app.route('/ar/first-time-2fa-setup')
+def first_time_2fa_setup_ar():
+    """Arabic version - First-time 2FA setup"""
+    if 'setup_user_id' not in session:
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['setup_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login_ar'))
+    
+    # Generate QR code
+    totp = pyotp.TOTP(user.two_factor_secret)
+    provisioning_uri = totp.provisioning_uri(
+        name=user.email,
+        issuer_name='Python Login Page'
+    )
+    
+    # Create QR code image
+    qr = qrcode.QRCode(version=1, box_size=10, border=5)
+    qr.add_data(provisioning_uri)
+    qr.make(fit=True)
+    img = qr.make_image(fill_color="black", back_color="white")
+    
+    buffer = io.BytesIO()
+    img.save(buffer)
+    buffer.seek(0)
+    qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
+    
+    return render_template('first_time_2fa_setup_ar.html', 
+                          qr_code=qr_code_base64,
+                          secret=user.two_factor_secret)
+
+
+@app.route('/ar/complete-2fa-setup', methods=['POST'])
+@limiter.limit("5 per minute")
+def complete_2fa_setup_ar():
+    """Arabic version - Complete 2FA setup"""
+    if 'setup_user_id' not in session:
+        return redirect(url_for('login_ar'))
+    
+    user = db.session.get(User, session['setup_user_id'])
+    if not user:
+        session.clear()
+        return redirect(url_for('login_ar'))
+    
+    token = request.form.get('token', '').strip()
+    
+    # Verify the token
+    totp = pyotp.TOTP(user.two_factor_secret)
+    if totp.verify(token, valid_window=1):
+        setup_id = session.pop('setup_user_id')
+        session.clear()
+        session['user_id'] = setup_id
+        session['username'] = user.username
+        session.permanent = True
+        flash('تم التسجيل وإعداد المصادقة الثنائية بنجاح!', 'success')
+        return redirect(url_for('congrats_ar'))
+    else:
+        flash('رمز غير صحيح. الرجاء المحاولة مرة أخرى.', 'error')
+        return redirect(url_for('first_time_2fa_setup_ar'))
+
 
 
 if __name__ == '__main__':
