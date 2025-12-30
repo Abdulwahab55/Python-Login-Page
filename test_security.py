@@ -2,9 +2,14 @@
 Test script to trigger various security features and log output
 """
 import requests
+import re
 from time import sleep
 
 BASE_URL = "http://127.0.0.1:5000"
+
+def get_csrf_token(response_text):
+    match = re.search(r'name="csrf_token" value="([^"]+)"', response_text)
+    return match.group(1) if match else None
 
 def test_weak_password():
     """Test 1: Weak password rejection"""
@@ -14,29 +19,40 @@ def test_weak_password():
     # Get CSRF token first
     session = requests.Session()
     response = session.get(f"{BASE_URL}/register")
+    csrf_token = get_csrf_token(response.text)
     
     # Try to register with weak password
     data = {
         'username': 'testuser',
         'email': 'test@example.com',
         'password': 'test123',
-        'confirm_password': 'test123'
+        'confirm_password': 'test123',
+        'csrf_token': csrf_token
     }
     response = session.post(f"{BASE_URL}/register", data=data, allow_redirects=False)
     print(f"Response: {response.status_code}")
     if response.status_code == 302:
         print("✓ Redirected (validation triggered)")
+    elif response.status_code == 200:
+        print("! 200 OK (Might show errors on page)")
+    else:
+        print(f"! Unexpected status: {response.status_code}")
     
 def test_rate_limiting():
     """Test 2: Rate limiting"""
     print("\n=== TEST 2: Rate Limiting ===")
     print("Attempting 11 login requests (limit is 10 per minute)...")
     
+    session = requests.Session()
+    # Get one token for the session (might expire or rotate but usually ok for flask-wtf if session persists)
+    response = session.get(f"{BASE_URL}/login")
+    csrf_token = get_csrf_token(response.text)
+
     for i in range(11):
-        session = requests.Session()
         data = {
             'username': 'testuser',
-            'password': 'wrongpassword'
+            'password': 'wrongpassword',
+            'csrf_token': csrf_token
         }
         try:
             response = session.post(f"{BASE_URL}/login", data=data, allow_redirects=False)
@@ -57,12 +73,14 @@ def test_invalid_username():
     
     session = requests.Session()
     response = session.get(f"{BASE_URL}/register")
+    csrf_token = get_csrf_token(response.text)
     
     data = {
         'username': 'ab',  # Too short
         'email': 'test2@example.com',
         'password': 'SecureP@ss123',
-        'confirm_password': 'SecureP@ss123'
+        'confirm_password': 'SecureP@ss123',
+        'csrf_token': csrf_token
     }
     response = session.post(f"{BASE_URL}/register", data=data, allow_redirects=False)
     print(f"Response: {response.status_code}")
@@ -76,12 +94,14 @@ def test_valid_registration():
     
     session = requests.Session()
     response = session.get(f"{BASE_URL}/register")
+    csrf_token = get_csrf_token(response.text)
     
     data = {
         'username': 'secureuser',
         'email': 'secure@example.com',
         'password': 'SecureP@ss456',
-        'confirm_password': 'SecureP@ss456'
+        'confirm_password': 'SecureP@ss456',
+        'csrf_token': csrf_token
     }
     response = session.post(f"{BASE_URL}/register", data=data, allow_redirects=False)
     print(f"Response: {response.status_code}")

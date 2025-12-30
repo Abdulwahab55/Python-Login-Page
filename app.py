@@ -24,7 +24,12 @@ load_dotenv()
 app = Flask(__name__)
 
 # Security Configuration
-app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
+if not app.config['SECRET_KEY']:
+    if os.getenv('FLASK_ENV') == 'production':
+        raise ValueError("No SECRET_KEY set for production configuration")
+    app.config['SECRET_KEY'] = 'dev-secret-key-change-in-production'
+
 app.config['SQLALCHEMY_DATABASE_URI'] = os.getenv('DATABASE_URI', 'sqlite:///users.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
@@ -93,20 +98,14 @@ with app.app_context():
         db.session.add(admin)
         db.session.commit()
         
-        # Print admin credentials and 2FA secret
-        totp = pyotp.TOTP(admin_secret)
-        print('='*60)
-        print('Default admin user created:')
-        print('Username: admin')
-        print('Password: Admin@123')
-        print(f'2FA Secret: {admin_secret}')
-        print(f'Current 2FA Token: {totp.now()}')
-        print('='*60)
-        print('⚠️  IMPORTANT:')
-        print('1. Change password on first login')
-        print('2. Add the 2FA secret to your authenticator app')
-        print('3. Use the token from your app to login')
-        print('='*60)
+        # Database commit
+        db.session.add(admin)
+        db.session.commit()
+        
+        # Log admin creation (securely)
+        app.logger.warning('Default admin user created. Please verify environment variables for credentials.')
+        # In a real scenario, never print secrets to stdout
+
 
 
 # Input Validation Functions
@@ -148,7 +147,30 @@ def validate_password(password):
     if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
         return False, "Password must contain at least one special character (!@#$%^&*...)"
     
+    
     return True, "Password is strong"
+
+
+def check_login_status(user, password):
+    """
+    Centralized login status check.
+    Returns: status_code, message_key
+    Status Codes: 'FAIL', 'INACTIVE', 'CHANGE_PASSWORD', 'REQUIRE_2FA', 'SUCCESS'
+    """
+    if not user or not check_password_hash(user.password, password):
+        # Use generic error to prevent enumeration/timing attacks
+        return 'FAIL', 'invalid_credentials'
+    
+    if not user.is_active:
+        return 'INACTIVE', 'account_inactive'
+    
+    if user.must_change_password:
+        return 'CHANGE_PASSWORD', 'force_password_change'
+    
+    if user.two_factor_enabled:
+        return 'REQUIRE_2FA', '2fa_required'
+        
+    return 'SUCCESS', 'login_success'
 
 
 @app.route('/')
@@ -172,57 +194,49 @@ def register():
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         
-        # Validation
+        # Basic Validation
         if not username or not email or not password:
             flash('All fields are required!', 'error')
             return redirect(url_for('register'))
         
-        # Validate username
-        if not validate_username(username):
-            flash('Username must be 3-20 characters long and contain only letters, numbers, and underscores', 'error')
-            return redirect(url_for('register'))
-        
-        # Validate email
-        if not validate_email(email):
-            flash('Please enter a valid email address', 'error')
-            return redirect(url_for('register'))
-        
-        # Validate password match
         if password != confirm_password:
             flash('Passwords do not match!', 'error')
             return redirect(url_for('register'))
-        
-        # Validate password strength
+
+        # Security Validation
+        if not validate_username(username):
+            flash('Username must be 3-20 characters long and contain only letters, numbers, and underscores', 'error')
+            return redirect(url_for('register'))
+            
+        if not validate_email(email):
+            flash('Please enter a valid email address', 'error')
+            return redirect(url_for('register'))
+
         is_valid, message = validate_password(password)
         if not is_valid:
             flash(message, 'error')
             return redirect(url_for('register'))
         
-        # Check if user already exists (prevent username enumeration with generic message)
-        existing_user = User.query.filter(
-            (User.username == username) | (User.email == email)
-        ).first()
-        
+        # Check existence (generic error)
+        existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
         if existing_user:
             flash('Registration failed. Please try different credentials.', 'error')
             return redirect(url_for('register'))
-        
-        # Create new user with hashed password and 2FA enabled
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        two_factor_secret = pyotp.random_base32()
-        new_user = User(
-            username=username, 
-            email=email, 
-            password=hashed_password,
-            two_factor_secret=two_factor_secret,
-            two_factor_enabled=True
-        )
-        
+            
+        # Create user
         try:
+            hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+            two_factor_secret = pyotp.random_base32()
+            new_user = User(
+                username=username, 
+                email=email, 
+                password=hashed_password,
+                two_factor_secret=two_factor_secret,
+                two_factor_enabled=True # Enforce 2FA by default
+            )
             db.session.add(new_user)
             db.session.commit()
             
-            # Store user info in session for 2FA setup
             session['setup_user_id'] = new_user.id
             return redirect(url_for('first_time_2fa_setup'))
         except Exception as e:
@@ -230,7 +244,7 @@ def register():
             app.logger.error(f'Registration error: {str(e)}')
             flash('Registration failed. Please try again.', 'error')
             return redirect(url_for('register'))
-    
+            
     return render_template('register.html')
 
 
@@ -247,41 +261,36 @@ def login():
             return redirect(url_for('login'))
         
         user = User.query.filter_by(username=username).first()
+        status, msg_key = check_login_status(user, password)
         
-        if user and check_password_hash(user.password, password):
-            # Check if account is active
-            if not user.is_active:
-                flash('Your account has been deactivated. Please contact administrator.', 'error')
-                return redirect(url_for('login'))
+        if status == 'FAIL':
+            flash('Invalid credentials. Please try again.', 'error')
+            return redirect(url_for('login'))
             
-            # Check if password must be changed
-            if user.must_change_password:
-                session['change_password_user_id'] = user.id
-                return redirect(url_for('force_change_password'))
+        elif status == 'INACTIVE':
+            flash('Your account has been deactivated. Please contact administrator.', 'error')
+            return redirect(url_for('login'))
             
-            # Check if 2FA is enabled
-            if user.two_factor_enabled:
-                # Store user_id temporarily for 2FA verification
-                session['temp_user_id'] = user.id
-                return redirect(url_for('verify_2fa'))
+        elif status == 'CHANGE_PASSWORD':
+            session['change_password_user_id'] = user.id
+            return redirect(url_for('force_change_password'))
             
-            # Regenerate session to prevent session fixation
+        elif status == 'REQUIRE_2FA':
+            session['temp_user_id'] = user.id
+            return redirect(url_for('verify_2fa'))
+            
+        elif status == 'SUCCESS':
+            # Complete Login
             session.clear()
             session['user_id'] = user.id
             session['username'] = user.username
             session['is_admin'] = user.is_admin
             session.permanent = True
             
-            # Redirect admin to admin dashboard
             if user.is_admin:
                 return redirect(url_for('admin_dashboard'))
-            
             return redirect(url_for('congrats'))
-        else:
-            # Generic error message to prevent username enumeration
-            flash('Invalid credentials. Please try again.', 'error')
-            return redirect(url_for('login'))
-    
+            
     return render_template('login.html')
 
 
@@ -707,39 +716,48 @@ def register_ar():
         password = request.form.get('password', '')
         confirm_password = request.form.get('confirm_password', '')
         
+        # Arabized Validation
         if not username or not email or not password:
             flash('جميع الحقول مطلوبة!', 'error')
             return redirect(url_for('register_ar'))
-        
-        if not validate_username(username):
-            flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
-            return redirect(url_for('register_ar'))
-        
-        if not validate_email(email):
-            flash('الرجاء إدخال عنوان بريد إلكتروني صحيح', 'error')
-            return redirect(url_for('register_ar'))
-        
+            
         if password != confirm_password:
             flash('كلمات المرور غير متطابقة!', 'error')
             return redirect(url_for('register_ar'))
-        
-        is_valid, message = validate_password(password)
+            
+        # Security Checks
+        if not validate_username(username):
+            flash('يجب أن يكون اسم المستخدم من 3-20 حرفاً ويحتوي فقط على أحرف وأرقام وشرطة سفلية', 'error')
+            return redirect(url_for('register_ar'))
+            
+        if not validate_email(email):
+            flash('الرجاء إدخال عنوان بريد إلكتروني صحيح', 'error')
+            return redirect(url_for('register_ar'))
+            
+        is_valid, _ = validate_password(password)
         if not is_valid:
             flash('كلمة المرور يجب أن تكون 8 أحرف على الأقل وتحتوي على أحرف كبيرة وصغيرة وأرقام ورموز خاصة', 'error')
             return redirect(url_for('register_ar'))
-        
-        existing_user = User.query.filter(
-            (User.username == username) | (User.email == email)
-        ).first()
-        
+            
+        # Check existence check
+        existing_user = User.query.filter((User.username == username) | (User.email == email)).first()
         if existing_user:
             flash('فشل التسجيل. الرجاء استخدام بيانات مختلفة.', 'error')
             return redirect(url_for('register_ar'))
-        
-        hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
-        new_user = User(username=username, email=email, password=hashed_password)
-        
+            
+        # Create User
         try:
+            hashed_password = generate_password_hash(password, method='pbkdf2:sha256')
+            # Fix: Ensure 2FA is set up for Arabic users too!
+            # Fix: Add two_factor_secret!
+            two_factor_secret = pyotp.random_base32()
+            new_user = User(
+                username=username, 
+                email=email, 
+                password=hashed_password,
+                two_factor_secret=two_factor_secret,
+                two_factor_enabled=True # Enforce 2FA
+            )
             db.session.add(new_user)
             db.session.commit()
             flash('تم التسجيل بنجاح! الرجاء تسجيل الدخول.', 'success')
@@ -749,7 +767,7 @@ def register_ar():
             app.logger.error(f'Registration error: {str(e)}')
             flash('فشل التسجيل. الرجاء المحاولة مرة أخرى.', 'error')
             return redirect(url_for('register_ar'))
-    
+            
     return render_template('register_ar.html')
 
 
@@ -764,19 +782,37 @@ def login_ar():
         if not username or not password:
             flash('اسم المستخدم وكلمة المرور مطلوبان!', 'error')
             return redirect(url_for('login_ar'))
-        
+            
         user = User.query.filter_by(username=username).first()
+        # Use shared security logic - Fixes 2FA Bypass!
+        status, _ = check_login_status(user, password)
         
-        if user and check_password_hash(user.password, password):
+        if status == 'FAIL':
+            flash('بيانات اعتماد غير صحيحة. الرجاء المحاولة مرة أخرى.', 'error')
+            return redirect(url_for('login_ar'))
+            
+        elif status == 'INACTIVE':
+            flash('تم تعطيل حسابك. الرجاء الاتصال بالمسؤول.', 'error')
+            return redirect(url_for('login_ar'))
+            
+        elif status == 'CHANGE_PASSWORD':
+            # TODO: Add Arabic force change password page if needed
+            session['change_password_user_id'] = user.id
+            flash('يجب تغيير كلمة المرور.', 'warning')
+            return redirect(url_for('force_change_password')) # Fallback to English for now
+            
+        elif status == 'REQUIRE_2FA':
+            session['temp_user_id'] = user.id
+            return redirect(url_for('verify_2fa')) # Fallback to English 2FA page or create AR version
+            
+        elif status == 'SUCCESS':
             session.clear()
             session['user_id'] = user.id
             session['username'] = user.username
+            session['is_admin'] = user.is_admin
             session.permanent = True
             return redirect(url_for('congrats_ar'))
-        else:
-            flash('بيانات اعتماد غير صحيحة. الرجاء المحاولة مرة أخرى.', 'error')
-            return redirect(url_for('login_ar'))
-    
+            
     return render_template('login_ar.html')
 
 
